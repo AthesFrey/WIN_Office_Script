@@ -1,29 +1,38 @@
 @echo off
-chcp 65001 >nul
+setlocal EnableExtensions DisableDelayedExpansion
+
 set "OUT_FILE=list_names.txt"
+set "DIR_TMP=%TEMP%\list_dirs_%RANDOM%%RANDOM%.tmp"
+set "FILE_TMP=%TEMP%\list_files_%RANDOM%%RANDOM%.tmp"
 
-if exist "%OUT_FILE%" del /f /q "%OUT_FILE%"
+rem Collect names first. Do not echo each file name as a command.
+dir /b /a:d > "%DIR_TMP%" 2>nul
+dir /b /a:-d > "%FILE_TMP%" 2>nul
 
-echo [文件夹] > "%OUT_FILE%"
-set /a DC=0
-for /d %%D in (*) do (
-    set /a DC+=1
-    echo %%D >> "%OUT_FILE%"
+for /f %%C in ('find /v /c "" ^< "%DIR_TMP%"') do set "DC=%%C"
+for /f %%C in ('find /v /c "" ^< "%FILE_TMP%"') do set "FC=%%C"
+
+> "%OUT_FILE%" (
+    echo [Folders]
+    if "%DC%"=="0" (
+        echo ^(none^)
+    ) else (
+        type "%DIR_TMP%"
+    )
+    echo.
+    echo [Files]
+    if "%FC%"=="0" (
+        echo ^(none^)
+    ) else (
+        type "%FILE_TMP%"
+    )
+    echo.
+    echo Total: %DC% folders, %FC% files
 )
-if %DC%==0 echo (无文件夹) >> "%OUT_FILE%"
 
-echo. >> "%OUT_FILE%"
-echo [文件] >> "%OUT_FILE%"
-set /a FC=0
-for /f "delims=" %%F in ('dir /a:-d /b 2^>nul') do (
-    set /a FC+=1
-    echo %%F >> "%OUT_FILE%"
-)
-if %FC%==0 echo (无文件) >> "%OUT_FILE%"
+del /f /q "%DIR_TMP%" "%FILE_TMP%" >nul 2>nul
 
-echo. >> "%OUT_FILE%"
-echo 合计: %DC% 个文件夹, %FC% 个文件 >> "%OUT_FILE%"
-
-echo 已生成: "%OUT_FILE%"
+echo Created: "%OUT_FILE%"
 type "%OUT_FILE%"
 pause
+endlocal
