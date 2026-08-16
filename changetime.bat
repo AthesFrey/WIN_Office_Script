@@ -3,12 +3,13 @@ setlocal EnableExtensions DisableDelayedExpansion
 
 :: Fixed root: script folder
 set "ROOT_DIR=%~dp0"
-pushd "%ROOT_DIR%" >nul 2>&1 || (
-  echo [ERR] Cannot switch to script folder.
-  echo %ROOT_DIR%
-  goto END
-)
+pushd "%ROOT_DIR%" >nul 2>&1
+if not errorlevel 1 goto ROOT_READY
+echo [ERR] Cannot switch to script folder.
+echo "%ROOT_DIR%"
+goto END
 
+:ROOT_READY
 echo ===============================
 echo Bulk change file/folder timestamps
 echo Date format: YYYY-MM-DD / YYYYMMDD / YYYY/MM/DD
@@ -16,7 +17,7 @@ echo Time format: 6 digits = HHMMSS, 4 digits = HHMM (seconds=00), blank = curre
 echo Digits only. Do not use colon.
 echo Note: access denied / locked / special objects will be skipped
 echo Working folder:
-echo %ROOT_DIR%
+echo "%ROOT_DIR%"
 echo ===============================
 
 :: Get current date/time
@@ -40,6 +41,8 @@ if "%_ALL%"=="1" if "%DATE_STD:~8,1%"=="" (
 
 if not "%DATE_STD:~4,1%"=="-" goto BAD_DATE
 if not "%DATE_STD:~7,1%"=="-" goto BAD_DATE
+if "%DATE_STD:~9,1%"=="" goto BAD_DATE
+if not "%DATE_STD:~10,1%"=="" goto BAD_DATE
 
 set "Y=%DATE_STD:~0,4%"
 set "M=%DATE_STD:~5,2%"
@@ -50,13 +53,9 @@ call :AllDigits "%M%" _M
 call :AllDigits "%D%" _D
 if "%_Y%%_M%%_D%" neq "111" goto BAD_DATE
 
-if "%M:~0,1%"=="0" (set /a MV=%M:~1,1%) else set /a MV=%M%
-if "%D:~0,1%"=="0" (set /a DV=%D:~1,1%) else set /a DV=%D%
-
-if %MV% LSS 1  goto BAD_DATE
-if %MV% GTR 12 goto BAD_DATE
-if %DV% LSS 1  goto BAD_DATE
-if %DV% GTR 31 goto BAD_DATE
+powershell -NoLogo -NoProfile -Command ^
+ "try { [void][datetime]::ParseExact('%DATE_STD%','yyyy-MM-dd',[System.Globalization.CultureInfo]::InvariantCulture); exit 0 } catch { exit 1 }"
+if errorlevel 1 goto BAD_DATE
 
 echo [OK] Date = %DATE_STD%
 goto DATE_OK
@@ -123,7 +122,7 @@ echo Processing... (root folder itself will be skipped)
 
 set "ROOT_DIR_PS=%ROOT_DIR%"
 
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command ^
+powershell -NoLogo -NoProfile -Command ^
  "$ErrorActionPreference='Stop';" ^
  "try {" ^
  "  $raw = '%DT_FULL%';" ^
@@ -156,10 +155,11 @@ powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command ^
  "  EnumSafe $root;" ^
  "  $total = $items.Count; $ok = 0;" ^
  "  foreach($f in $items){" ^
- "    $ro = $false;" ^
- "    try { if($f.Attributes -band [IO.FileAttributes]::ReadOnly){ $ro = $true; $f.Attributes = ($f.Attributes -band (-bnot [IO.FileAttributes]::ReadOnly)) } } catch {}" ^
+ "    $ro = $false; $restoreRo = $false;" ^
+ "    try { if($f.Attributes -band [IO.FileAttributes]::ReadOnly){ $ro = $true; $f.Attributes = ($f.Attributes -band (-bnot [IO.FileAttributes]::ReadOnly)); $restoreRo = $true } } catch {}" ^
  "    try { $f.CreationTime = $ts; $f.LastAccessTime = $ts; $f.LastWriteTime = $ts; $ok++ }" ^
  "    catch { AddFail $f.FullName $ro $_.Exception.GetType().FullName $_.Exception.Message }" ^
+ "    finally { if($restoreRo){ try { $f.Attributes = ($f.Attributes -bor [IO.FileAttributes]::ReadOnly) } catch {} } }" ^
  "  }" ^
  "  $fail = $fails.Count;" ^
  "  Write-Host ('Total:{0}  Success:{1}  Skipped/Failed:{2}  (root skipped)' -f $total,$ok,$fail);" ^
